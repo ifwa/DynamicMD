@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DynamicMD</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-light.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+
+<style>
+/* --- Core Layout --- */
+:root { --sidebar-w: 280px; --bg: #0f1720; --text: #e6eef8; --accent: #3b82f6; }
+html,body { height:100%; margin:0; font-family: Inter, system-ui, sans-serif; background: #071226; color:var(--text); }
+.app { display:flex; height:100vh; }
+.sidebar { width: var(--sidebar-w); background: #061224; padding: 18px; overflow:auto; border-right: 1px solid rgba(255,255,255,0.05); }
+.cat-title { display:flex; justify-content:space-between; padding:8px 0; color: #94a3b8; font-weight: 600; cursor: pointer; font-size:13px; text-transform: uppercase; letter-spacing: 0.05em; }
+.item-list { margin-bottom: 20px; padding-left: 8px; }
+.item { padding:8px 12px; border-radius:6px; cursor:pointer; color:#cbd5e1; margin-bottom:2px; font-size: 14px; transition: all 0.2s; }
+.item:hover { background: rgba(255,255,255,0.04); color: white; }
+.item.active { background: rgba(59,130,246,0.15); color: #60a5fa; border-left: 3px solid #60a5fa; }
+.item-list.collapsed { display: none; }
+.caret { font-size: 10px; transition: transform 0.2s; }
+.cat-title.collapsed .caret { transform: rotate(-90deg); }
+
+.main { flex:1; padding:30px 40px; overflow:auto; background: #f1f5f9; color:#0f1720; }
+.header { margin-bottom:24px; }
+.h1 { font-size:28px; font-weight:800; color:#0f1720; letter-spacing: -0.02em; }
+.container { display:grid; grid-template-columns: 1fr; gap:24px; max-width: 900px; }
+.card { background: white; border-radius:12px; padding:24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 1px solid #e2e8f0; }
+.cmd-title { font-weight:700; margin:0 0 16px 0; font-size:18px; color: #1e293b; padding-bottom: 12px; border-bottom: 2px solid #f1f5f9; }
+
+/* --- Parameter UI Styles --- */
+.params-container { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px; }
+.params-header { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.05em; }
+.param-row { display:flex; align-items:center; gap:12px; flex-wrap: wrap; padding: 4px 0; }
+
+/* 1. Checkbox */
+.p-check { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+
+/* 2. Label */
+.p-label { font-size: 14px; font-weight: 600; color: #334155; min-width: 100px; }
+
+/* 3. Prefix */
+.p-prefix { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #d946ef; background: #fae8ff; padding: 2px 6px; border-radius: 4px; user-select: none; }
+
+/* 4. Input */
+.p-input { padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; color: #334155; width: 180px; transition: border 0.2s; font-family: 'JetBrains Mono', monospace; }
+.p-input:focus { border-color: var(--accent); outline: none; }
+.p-input:disabled { background: #f1f5f9; color: #94a3b8; }
+
+/* 5. Dropdown */
+.p-select { padding: 6px; border-radius: 6px; border: 1px solid #cbd5e1; background: white; font-size: 13px; color: #475569; font-family: 'JetBrains Mono', monospace; }
+
+/* --- Code Block --- */
+.md-content { color: #334155; line-height: 1.6; font-size: 14px; }
+.code-wrapper { margin-top: 16px; background:#f5f5f5; border-radius:8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.08); border: 1px solid #e5e5e5; }
+.code-header { display:flex; justify-content:flex-end; padding: 6px 12px; background: #eeeeee; border-bottom: 1px solid #e5e5e5; }
+.md-content pre { margin: 0; padding: 0px; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.5; background: #f5f5f5; }
+.copy-btn { background: #e5e5e5; color: #404040; border: none; border-radius: 4px; padding: 4px 10px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.copy-btn:hover { background: #d5d5d5; color: #000; }
+
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div style="font-weight:800; font-size:18px; margin-bottom:20px; color:white;">DynamicMD</div>
+    <div id="sidebarContent"></div>
+  </aside>
+
+  <main class="main">
+    <div class="header">
+      <div class="h1" id="mainTitle">Welcome</div>
+    </div>
+    
+    <div id="pageParams" class="container" style="margin-bottom: 24px; display:none;"></div>
+
+    <div id="mainContent" class="container"></div>
+  </main>
+</div>
+
+<script>
+const data = {{ data | tojson }};
+const sidebar = document.getElementById('sidebarContent');
+const mainTitle = document.getElementById('mainTitle');
+const mainContent = document.getElementById('mainContent');
+const pageParamsContainer = document.getElementById('pageParams');
+
+let paramState = {};
+
+function buildSidebar() {
+  sidebar.innerHTML = '';
+  data.categories.forEach(cat => {
+    const title = document.createElement('div');
+    title.className = cat.defaultExpanded ? 'cat-title' : 'cat-title collapsed';
+    title.innerHTML = `<span>${cat.title}</span><span class="caret">▼</span>`;
+    
+    const list = document.createElement('div');
+    list.className = cat.defaultExpanded ? 'item-list' : 'item-list collapsed';
+
+    title.onclick = () => {
+        list.classList.toggle('collapsed');
+        title.classList.toggle('collapsed');
+    };
+
+    cat.items.forEach(item => {
+      const it = document.createElement('div');
+      it.className = 'item';
+      it.textContent = item.name;
+      it.onclick = () => selectItem(item, it);
+      list.appendChild(it);
+    });
+
+    sidebar.appendChild(title);
+    sidebar.appendChild(list);
+  });
+}
+
+function selectItem(item, elem) {
+  document.querySelectorAll('.item').forEach(n => n.classList.remove('active'));
+  elem.classList.add('active');
+  mainTitle.textContent = item.name;
+  
+  // Reset State for this view
+  paramState = {};
+  
+  // 1. Render Page Level Params (H2)
+  pageParamsContainer.innerHTML = '';
+  if (item.params && item.params.length > 0) {
+    pageParamsContainer.style.display = 'grid';
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `<div class="cmd-title">Page Parameters</div>`;
+    const pContainer = createParamContainer(item.params, 'page');
+    card.appendChild(pContainer);
+    pageParamsContainer.appendChild(card);
+  } else {
+    pageParamsContainer.style.display = 'none';
+  }
+
+  // 2. Render Cards (H3)
+  mainContent.innerHTML = ''; 
+  item.cards.forEach(cardData => {
+    const card = document.createElement('div'); card.className = 'card';
+    
+    const title = document.createElement('div'); title.className = 'cmd-title'; title.textContent = cardData.title;
+    card.appendChild(title);
+
+    // Card Level Params
+    if (cardData.params && cardData.params.length > 0) {
+        const pContainer = createParamContainer(cardData.params, 'card');
+        card.appendChild(pContainer);
+    }
+    
+    const body = document.createElement('div'); body.className = 'md-content';
+    body.innerHTML = cardData.html;
+    card.appendChild(body);
+    mainContent.appendChild(card);
+  });
+
+  // 3. Post-process
+  enhanceCodeBlocks();
+  updateAllCodeBlocks(); // Initial run to fill defaults
+}
+
+function createParamContainer(params, scope) {
+    const container = document.createElement('div');
+    container.className = 'params-container';
+
+    params.forEach(p => {
+        // Initialize State
+        paramState[p.id] = {
+            value: p.default || '',
+            prefix: p.prefix || '',
+            enabled: (p.enabled !== false), // default true
+            type: p.type || 'text' // Store the parameter type
+        };
+
+        const row = document.createElement('div'); row.className = 'param-row';
+
+        // Checkbox
+        const chk = document.createElement('input'); chk.type = 'checkbox'; chk.className = 'p-check';
+        chk.checked = paramState[p.id].enabled;
+        chk.onchange = (e) => {
+            paramState[p.id].enabled = e.target.checked;
+            if (input) input.disabled = !e.target.checked;
+            updateAllCodeBlocks();
+        };
+
+        // Label
+        const lbl = document.createElement('div'); lbl.className = 'p-label'; lbl.textContent = p.name || p.id;
+
+        // Prefix
+        const pre = document.createElement('div'); pre.className = 'p-prefix'; pre.textContent = p.prefix || 'VAR';
+        if(!p.prefix) pre.style.display = 'none';
+
+        row.appendChild(chk);
+        row.appendChild(lbl);
+        row.appendChild(pre);
+
+        // Input (skip for switch type)
+        let input = null;
+        if (p.type !== 'switch') {
+            input = document.createElement('input'); input.className = 'p-input'; 
+            input.value = paramState[p.id].value;
+            input.disabled = !paramState[p.id].enabled;
+            input.oninput = (e) => {
+                paramState[p.id].value = e.target.value;
+                updateAllCodeBlocks();
+            };
+            row.appendChild(input);
+        }
+
+        // Dropdown (if options exist)
+        if (p.options && p.options.length > 0 && input) {
+            const sel = document.createElement('select'); sel.className = 'p-select';
+            p.options.forEach(opt => {
+                const o = document.createElement('option'); o.value = opt; o.textContent = opt;
+                sel.appendChild(o);
+            });
+            // Update input when dropdown changes
+            sel.onchange = (e) => {
+                input.value = e.target.value;
+                paramState[p.id].value = e.target.value;
+                updateAllCodeBlocks();
+            };
+            row.appendChild(sel);
+        }
+
+        container.appendChild(row);
+    });
+    return container;
+}
+
+function enhanceCodeBlocks() {
+    // 1. Wrap pre/code
+    // 2. Store original template in data attribute
+    document.querySelectorAll('.md-content pre code').forEach(codeBlock => {
+        // Save the raw template text before highlighting messes it up
+        codeBlock.setAttribute('data-template', codeBlock.textContent);
+        
+        // Add Copy UI Wrapper (Parent of PRE)
+        const pre = codeBlock.parentElement;
+        if (!pre.parentElement.classList.contains('code-wrapper')) {
+            const wrapper = document.createElement('div'); wrapper.className = 'code-wrapper';
+            const header = document.createElement('div'); header.className = 'code-header';
+            const copyBtn = document.createElement('button'); copyBtn.className = 'copy-btn';
+            copyBtn.textContent = 'Copy';
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(codeBlock.textContent);
+                copyBtn.textContent = 'Copied!';
+                setTimeout(()=> copyBtn.textContent = 'Copy', 1500);
+            };
+            header.appendChild(copyBtn);
+            
+            pre.parentNode.insertBefore(wrapper, pre);
+            wrapper.appendChild(header);
+            wrapper.appendChild(pre);
+        }
+    });
+}
+
+function updateAllCodeBlocks() {
+    document.querySelectorAll('.md-content pre code').forEach(block => {
+        let text = block.getAttribute('data-template');
+        
+        // Regex to find ${varName}
+        // We replace based on paramState
+        text = text.replace(/\$\{([a-zA-Z0-9_]+)\}/g, (match, id) => {
+            const state = paramState[id];
+            if (!state) return match; // variable not defined in params, keep it as is
+            
+            if (!state.enabled) return ''; // If disabled, remove it entirely
+            
+            // For switch parameters, return just the prefix (without trailing space, no value)
+            if (state.type === 'switch') {
+                return state.prefix.trim();
+            }
+            
+            // For other types: add space only if prefix doesn't end with =
+            const separator = state.prefix.endsWith('=') ? '' : ' ';
+            return state.prefix + separator + state.value;
+        });
+        
+        // Preserve leading whitespace, but normalize multiple spaces to single space in content
+        text = text.split('\n').map(line => {
+            // Extract leading whitespace
+            const leadingMatch = line.match(/^(\s*)/);
+            const leading = leadingMatch ? leadingMatch[1] : '';
+            const rest = line.slice(leading.length);
+            // Collapse multiple spaces only in the content part
+            const normalized = rest.replace(/  +/g, ' ');
+            return leading + normalized;
+        }).join('\n');
+
+        block.textContent = text;
+        
+        // Re-apply Syntax Highlighting
+        hljs.highlightElement(block);
+    });
+}
+
+// Init
+buildSidebar();
+</script>
+</body>
+</html>
