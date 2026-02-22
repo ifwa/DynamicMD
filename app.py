@@ -48,6 +48,7 @@ def parse_markdown_to_structure(filepath):
     current_cat = None   # H1
     current_item = None  # H2
     current_card = None  # H3
+    active_fence = None
 
     # Regex patterns
     h1_re = re.compile(r'^#\s+(.+)')
@@ -55,11 +56,41 @@ def parse_markdown_to_structure(filepath):
     h3_re = re.compile(r'^###\s+(.+)')
     # Param regex: @param varName { ... }
     param_re = re.compile(r'^@param\s+(\w+)\s+\{(.+)\}')
+    fence_re = re.compile(r'^\s*([`~]{3,})')
+
+    def append_to_current_card(content_line):
+        nonlocal current_card
+        if current_item and not current_card:
+            current_card = {"title": "Intro", "content_raw": [], "params": []}
+            current_item['cards'].append(current_card)
+
+        if current_card:
+            current_card['content_raw'].append(content_line)
 
     for line in lines:
         line = line.rstrip()
+        fence_match = fence_re.match(line)
+        fence_seq = fence_match.group(1) if fence_match else None
+
+        # Manage fenced code blocks. While in a fence, never parse headings/@param.
+        if fence_seq:
+            append_to_current_card(line)
+
+            fence_char = fence_seq[0]
+            fence_len = len(fence_seq)
+            if active_fence is None:
+                active_fence = (fence_char, fence_len)
+            else:
+                active_char, active_len = active_fence
+                if fence_char == active_char and fence_len >= active_len:
+                    active_fence = None
+            continue
+
+        if active_fence is not None:
+            append_to_current_card(line)
+            continue
         
-        # 1. Check for Parameters first
+        # Check for parameters first
         p_match = param_re.match(line)
         if p_match:
             p_id = p_match.group(1)
@@ -73,7 +104,7 @@ def parse_markdown_to_structure(filepath):
                 current_item['params'].append(p_config)
             continue # Skip rendering this line
 
-        # 2. Check Headers
+        # Check headings
         m1 = h1_re.match(line)
         if m1:
             current_cat = { "title": m1.group(1), "items": [], "defaultExpanded": False }
@@ -105,15 +136,9 @@ def parse_markdown_to_structure(filepath):
             current_item['cards'].append(current_card)
             continue
 
-        # 3. Content
+        # Handle content
         if line or (current_card and current_card['content_raw']):
-            if current_item and not current_card:
-                # Create default card if content exists before H3
-                current_card = {"title": "Intro", "content_raw": [], "params": []}
-                current_item['cards'].append(current_card)
-            
-            if current_card:
-                current_card['content_raw'].append(line)
+            append_to_current_card(line)
 
     # Convert Markdown to HTML
     md = markdown.Markdown(extensions=['fenced_code', 'codehilite'])
